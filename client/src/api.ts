@@ -32,11 +32,27 @@ export const getUsers = async (): Promise<User[]> => {
   }
 };
 
+export interface PaginatedTransactions {
+  data: Transaction[];
+  pagination: {
+    currentPage: number;
+    pageSize: number;
+    totalItems: number;
+    totalPages: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
+}
+
 export const getTransactions = async (
-  userId: string
-): Promise<Transaction[]> => {
+  accountId: string,
+  page: number = 1,
+  limit: number = 10
+): Promise<PaginatedTransactions> => {
   try {
-    const response = await fetch(`${API_URL}/transactions/${userId}`);
+    const response = await fetch(
+      `${API_URL}/accounts/${accountId}/transactions?page=${page}&limit=${limit}`
+    );
     if (!response.ok) {
       throw new Error("Failed to fetch transactions");
     }
@@ -69,13 +85,17 @@ export const createTransaction = async (
       }),
     });
     if (!response.ok) {
-      toast.error("Failed to create transaction");
-      throw new Error("Failed to create transaction");
+      const errorData = await response.json();
+      const errorMessage = errorData.error || "Failed to create transaction";
+      toast.error(errorMessage);
+      throw new Error(errorMessage);
     }
     toast.success("Transaction created successfully");
     return response.json();
-  } catch {
-    toast.error("Failed to create transaction");
-    throw new Error("Failed to create transaction");
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to create transaction";
+    toast.error(errorMessage);
+    throw error;
   }
 };

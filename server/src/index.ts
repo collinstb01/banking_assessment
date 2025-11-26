@@ -46,8 +46,6 @@ const db: Database = new sqlite3.Database(":memory:", (err) => {
   }
 });
 
-// Basic database initialization
-// Consider: Migration system, seed data management, error handling
 function initializeDatabase() {
   const usersTableQuery = `
     CREATE TABLE IF NOT EXISTS users (
@@ -151,8 +149,6 @@ function insertSampleUsersData() {
   });
 }
 
-// Sample data insertion
-// Consider: Data validation, error handling, transaction management
 function insertSampleData() {
   const sampleAccounts = [
     {
@@ -245,95 +241,258 @@ app.post("/api/transactions", async (req, res) => {
   const { accountId, amount, description, type, accountNumber } = req.body;
   const createdAt = new Date().toISOString();
 
-  if (type === "DEPOSIT") {
-    db.run(
-      "UPDATE accounts SET balance = balance + ? WHERE id = ?",
-      [amount, accountId],
-      (err) => {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-      }
-    );
+  // Input validation
+  if (!accountId || !amount || !description || !type) {
+    res.status(400).json({ error: "Missing required fields" });
+    return;
   }
 
-  if (type === "WITHDRAWAL") {
-    db.run(
-      "UPDATE accounts SET balance = balance - ? WHERE id = ?",
-      [amount, accountId],
-      (err) => {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-      }
-    );
-
-    ("----- send money to the account number -----");
+  if (amount <= 0) {
+    res.status(400).json({ error: "Amount must be greater than zero" });
+    return;
   }
 
-  if (type === "TRANSFER") {
-    const isBalanceEnough = await db.get(
-      "SELECT balance FROM accounts WHERE id = ?",
-      [accountId]
-    );
-    if (!isBalanceEnough || (isBalanceEnough as any).balance < amount) {
-      res.status(400).json({ error: "Insufficient balance" });
-      return;
-    }
-
-    // if (accountNumber === accountId) {
-    //   res.status(400).json({ error: "Cannot transfer money to the same account" });
-    //   return;
-    // }
-
-    db.run(
-      "UPDATE accounts SET balance = balance - ? WHERE id = ?",
-      [amount, accountId],
-      (err) => {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-      }
-    );
-
-    db.run(
-      "UPDATE accounts SET balance = balance + ? WHERE accountNumber = ?",
-      [amount, accountNumber],
-      (err) => {
-        if (err) {
-          res.status(500).json({ error: err.message });
-          return;
-        }
-      }
-    );
+  if (!["DEPOSIT", "WITHDRAWAL", "TRANSFER"].includes(type)) {
+    res.status(400).json({ error: "Invalid transaction type" });
+    return;
   }
 
-  db.run(
-    "INSERT INTO transactions (id, type, amount, description, createdAt, accountId) VALUES (?, ?, ?, ?, ?, ?)",
-    [id, type, amount, description, createdAt, accountId],
-    (err) => {
+  db.get(
+    "SELECT * FROM accounts WHERE id = ?",
+    [accountId],
+    (err, sourceAccount: any) => {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
       }
-      res.json({ message: "Transaction created" });
+      if (!sourceAccount) {
+        res.status(404).json({ error: "Source account not found" });
+        return;
+      }
+
+      if (type === "DEPOSIT") {
+        db.run(
+          "UPDATE accounts SET balance = balance + ? WHERE id = ?",
+          [amount, accountId],
+          (err) => {
+            if (err) {
+              res.status(500).json({ error: err.message });
+              return;
+            }
+
+            db.run(
+              "INSERT INTO transactions (id, type, amount, description, createdAt, accountId) VALUES (?, ?, ?, ?, ?, ?)",
+              [id, type, amount, description, createdAt, accountId],
+              (err) => {
+                if (err) {
+                  res.status(500).json({ error: err.message });
+                  return;
+                }
+                res.json({ message: "Transaction created" });
+              }
+            );
+          }
+        );
+      } else if (type === "WITHDRAWAL") {
+        if (sourceAccount.balance < amount) {
+          res.status(400).json({ error: "Insufficient balance" });
+          return;
+        }
+
+        if (!accountNumber) {
+          res
+            .status(400)
+            .json({ error: "Account number is required for withdrawal" });
+          return;
+        }
+
+        db.run(
+          "UPDATE accounts SET balance = balance - ? WHERE id = ?",
+          [amount, accountId],
+          (err) => {
+            if (err) {
+              res.status(500).json({ error: err.message });
+              return;
+            }
+
+            db.run(
+              "INSERT INTO transactions (id, type, amount, description, createdAt, accountId) VALUES (?, ?, ?, ?, ?, ?)",
+              [id, type, amount, description, createdAt, accountId],
+              (err) => {
+                if (err) {
+                  res.status(500).json({ error: err.message });
+                  return;
+                }
+                res.json({ message: "Transaction created" });
+              }
+            );
+          }
+        );
+      } else if (type === "TRANSFER") {
+        if (!accountNumber) {
+          res
+            .status(400)
+            .json({ error: "Target account number is required for transfer" });
+          return;
+        }
+
+        if (sourceAccount.balance < amount) {
+          res.status(400).json({ error: "Insufficient balance" });
+          return;
+        }
+
+        if (sourceAccount.accountNumber === accountNumber) {
+          res
+            .status(400)
+            .json({ error: "Cannot transfer money to the same account" });
+          return;
+        }
+
+        db.get(
+          "SELECT * FROM accounts WHERE accountNumber = ?",
+          [accountNumber],
+          (err, targetAccount: any) => {
+            if (err) {
+              res.status(500).json({ error: err.message });
+              return;
+            }
+            if (!targetAccount) {
+              res.status(404).json({ error: "Target account not found" });
+              return;
+            }
+
+            db.run(
+              "UPDATE accounts SET balance = balance - ? WHERE id = ?",
+              [amount, accountId],
+              (err) => {
+                if (err) {
+                  res.status(500).json({ error: err.message });
+                  return;
+                }
+
+                db.run(
+                  "UPDATE accounts SET balance = balance + ? WHERE accountNumber = ?",
+                  [amount, accountNumber],
+                  (err) => {
+                    if (err) {
+                      res.status(500).json({
+                        error:
+                          "Failed to add funds to target account: " +
+                          err.message,
+                      });
+                      return;
+                    }
+
+                    const sourceTransactionId = Math.random()
+                      .toString(36)
+                      .substring(2, 15);
+                    db.run(
+                      "INSERT INTO transactions (id, type, amount, description, createdAt, accountId) VALUES (?, ?, ?, ?, ?, ?)",
+                      [
+                        sourceTransactionId,
+                        type,
+                        amount,
+                        `Transfer to account ${accountNumber}: ${description}`,
+                        createdAt,
+                        accountId,
+                      ],
+                      (err) => {
+                        if (err) {
+                          res.status(500).json({
+                            error:
+                              "Failed to create transaction record for source account",
+                          });
+                          return;
+                        }
+
+                        const targetTransactionId = Math.random()
+                          .toString(36)
+                          .substring(2, 15);
+                        db.run(
+                          "INSERT INTO transactions (id, type, amount, description, createdAt, accountId) VALUES (?, ?, ?, ?, ?, ?)",
+                          [
+                            targetTransactionId,
+                            "DEPOSIT",
+                            amount,
+                            `Transfer from account ${sourceAccount.accountNumber}: ${description}`,
+                            createdAt,
+                            targetAccount.id,
+                          ],
+                          (err) => {
+                            if (err) {
+                              res.status(500).json({
+                                error:
+                                  "Failed to create transaction record for target account",
+                              });
+                              return;
+                            }
+                            res.json({ message: "Transaction created" });
+                          }
+                        );
+                      }
+                    );
+                  }
+                );
+              }
+            );
+          }
+        );
+      }
     }
   );
 });
 
-app.get("/api/transactions/:accountId", (req, res) => {
-  db.all(
-    "SELECT * FROM transactions WHERE accountId = ?",
-    [req.params.accountId],
-    (err, rows) => {
+app.get("/api/accounts/:id/transactions", (req, res) => {
+  const accountId = req.params.id;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+
+  if (page < 1) {
+    res.status(400).json({ error: "Page must be greater than 0" });
+    return;
+  }
+
+  if (limit < 1 || limit > 100) {
+    res.status(400).json({ error: "Limit must be between 1 and 100" });
+    return;
+  }
+
+  const offset = (page - 1) * limit;
+
+  db.get(
+    "SELECT COUNT(*) as total FROM transactions WHERE accountId = ?",
+    [accountId],
+    (err, countRow: any) => {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
       }
-      res.json(rows);
+
+      const totalTransactions = countRow.total;
+      const totalPages = Math.ceil(totalTransactions / limit);
+
+      db.all(
+        "SELECT * FROM transactions WHERE accountId = ? ORDER BY createdAt DESC LIMIT ? OFFSET ?",
+        [accountId, limit, offset],
+        (err, rows) => {
+          if (err) {
+            res.status(500).json({ error: err.message });
+            return;
+          }
+
+          res.json({
+            data: rows,
+            pagination: {
+              currentPage: page,
+              pageSize: limit,
+              totalItems: totalTransactions,
+              totalPages: totalPages,
+              hasNextPage: page < totalPages,
+              hasPreviousPage: page > 1,
+            },
+          });
+        }
+      );
     }
   );
 });

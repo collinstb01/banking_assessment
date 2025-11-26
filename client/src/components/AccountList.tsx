@@ -81,6 +81,10 @@ const UserCard = ({
 }) => {
   const [showTransactions, setShowTransactions] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [hasPreviousPage, setHasPreviousPage] = useState(false);
   const [showCreateTransaction, setShowCreateTransaction] = useState(false);
   const [createTransactionData, setCreateTransactionData] = useState({
     amount: 0,
@@ -89,41 +93,68 @@ const UserCard = ({
     accountNumber: "",
   });
 
-  const _getTransactions = async (accountId: string) => {
+  const _getTransactions = async (accountId: string, page: number = 1) => {
     setShowTransactions(true);
 
-    const transactionsData = await getTransactions(accountId);
-    setTransactions(transactionsData);
+    const response = await getTransactions(accountId, page, 10);
+    setTransactions(response.data);
+    setCurrentPage(response.pagination.currentPage);
+    setTotalPages(response.pagination.totalPages);
+    setHasNextPage(response.pagination.hasNextPage);
+    setHasPreviousPage(response.pagination.hasPreviousPage);
   };
 
   const _createTransaction = async (accountId: string) => {
-    if (createTransactionData.type === "DEPOSIT") {
-      setCreateTransactionData({
-        ...createTransactionData,
-        accountNumber: "null",
-      });
-    }
-
-    if (
-      !createTransactionData.type ||
-      createTransactionData.amount === 0 ||
-      !createTransactionData.description ||
-      !createTransactionData.accountNumber
-    ) {
-      toast.error("Please fill all the fields");
+    // Validation
+    if (!createTransactionData.type) {
+      toast.error("Please select a transaction type");
       return;
     }
 
-    await createTransaction(
-      accountId,
-      createTransactionData.amount,
-      createTransactionData.description,
-      createTransactionData.type,
-      createTransactionData.accountNumber
-    );
-    setShowCreateTransaction(false);
-    _getTransactions(accountId);
-    fetchUsers();
+    if (createTransactionData.amount <= 0) {
+      toast.error("Amount must be greater than zero");
+      return;
+    }
+
+    if (!createTransactionData.description) {
+      toast.error("Please enter a description");
+      return;
+    }
+
+    // For WITHDRAWAL and TRANSFER, account number is required
+    if (
+      (createTransactionData.type === "WITHDRAWAL" ||
+        createTransactionData.type === "TRANSFER") &&
+      !createTransactionData.accountNumber
+    ) {
+      toast.error(
+        "Account number is required for " +
+          createTransactionData.type.toLowerCase()
+      );
+      return;
+    }
+
+    try {
+      await createTransaction(
+        accountId,
+        createTransactionData.amount,
+        createTransactionData.description,
+        createTransactionData.type,
+        createTransactionData.accountNumber || "null"
+      );
+      setShowCreateTransaction(false);
+      setCreateTransactionData({
+        amount: 0,
+        description: "",
+        type: "" as "DEPOSIT" | "WITHDRAWAL" | "TRANSFER",
+        accountNumber: "",
+      });
+      _getTransactions(accountId);
+      fetchUsers();
+    } catch (error) {
+      // Error toast already handled in api.ts
+      console.error("Transaction failed:", error);
+    }
   };
 
   console.log(transactions, "skksksk");
@@ -213,12 +244,33 @@ const UserCard = ({
             <div className={styles.transactionsContainer}>
               {transactions.map((transaction, index) => (
                 <div key={transaction.id} className={"transactionItem"}>
-                  <p>{index + 1}.</p>
+                  <p>{(currentPage - 1) * 10 + index + 1}.</p>
                   <p>amount: {transaction.amount}</p>
                   <p>description: {transaction.description}</p>
                   <p>createdAt: {transaction.createdAt}</p>
                 </div>
               ))}
+              <div className="pagination">
+                <button
+                  onClick={() =>
+                    _getTransactions(user.accountId, currentPage - 1)
+                  }
+                  disabled={!hasPreviousPage}
+                >
+                  Previous
+                </button>
+                <span>
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  onClick={() =>
+                    _getTransactions(user.accountId, currentPage + 1)
+                  }
+                  disabled={!hasNextPage}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           ) : (
             <div className={styles.transactionsList}>
