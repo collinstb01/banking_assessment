@@ -6,3 +6,21 @@ export interface Account {
   accountHolder: string;
   createdAt: string;
 }
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  accountId: string;
+  accountNumber: string;
+  balance: number;
+  createdAt: string;
+}
+
+export interface Transaction {
+  id: string;
+  type: "DEPOSIT" | "WITHDRAWAL" | "TRANSFER";
+  amount: number;
+  description: string;
+  createdAt: string;
+}

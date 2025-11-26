@@ -21,7 +21,9 @@
     "express": "^4.21.2",
     "sqlite3": "^5.1.7",
     "ts-node": "^10.9.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "uuid": "^13.0.0",
+    "uuidv4": "^6.2.13"
   },
   "devDependencies": {
     "ts-node-dev": "^2.0.0"

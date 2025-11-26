@@ -26,6 +26,7 @@ import express from "express";
 import cors from "cors";
 import sqlite3 from "sqlite3";
 import { Database } from "sqlite3";
+import { uuid } from "uuidv4";
 
 const app = express();
 const PORT = 3001;
@@ -48,6 +49,24 @@ const db: Database = new sqlite3.Database(":memory:", (err) => {
 // Basic database initialization
 // Consider: Migration system, seed data management, error handling
 function initializeDatabase() {
+  const usersTableQuery = `
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY UNIQUE,
+      name TEXT,
+      email TEXT UNIQUE,
+      createdAt TEXT
+    )
+  `;
+
+  db.run(usersTableQuery, (err) => {
+    if (err) {
+      console.error("Error creating table:", err);
+    } else {
+      console.log("Users table created");
+      insertSampleUsersData();
+    }
+  });
+
   const createTableQuery = `
     CREATE TABLE IF NOT EXISTS accounts (
       id TEXT PRIMARY KEY,
@@ -55,17 +74,80 @@ function initializeDatabase() {
       accountType TEXT CHECK(accountType IN ('CHECKING', 'SAVINGS')),
       balance REAL,
       accountHolder TEXT,
-      createdAt TEXT
+      createdAt TEXT,
+
+      userId TEXT,
+      FOREIGN KEY (userId) REFERENCES users (id)
     )
   `;
 
   db.run(createTableQuery, (err) => {
     if (err) {
+      console.log("------- accounts table query -------");
+
       console.error("Error creating table:", err);
     } else {
       console.log("Accounts table created");
       insertSampleData();
     }
+  });
+
+  const transactionsTableQuery = `
+    CREATE TABLE IF NOT EXISTS transactions (
+      id TEXT PRIMARY KEY UNIQUE,
+      type TEXT CHECK(type IN ('DEPOSIT', 'WITHDRAWAL', 'TRANSFER')),
+      amount REAL,
+      description TEXT,
+      createdAt TEXT,
+      
+      accountId TEXT,
+      FOREIGN KEY (accountId) REFERENCES accounts (id)
+    )
+  `;
+
+  db.run(transactionsTableQuery, (err) => {
+    if (err) {
+      console.log("------- transactions table query -------");
+      console.error("Error creating table:", err);
+    } else {
+      console.log("Transactions table created", transactionsTableQuery);
+    }
+  });
+}
+
+function insertSampleUsersData() {
+  const sampleUsers = [
+    {
+      id: "1",
+      name: "John Doe",
+      email: "john.doe@example.com",
+      // password: "password",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: "2",
+      name: "Jane Smith",
+      email: "jane.smith@example.com",
+      // password: "password",
+      createdAt: new Date().toISOString(),
+    },
+  ];
+
+  const insertQuery = `
+    INSERT OR REPLACE INTO users (id, name, email, createdAt)
+    VALUES (?, ?, ?, ?)
+  `;
+
+  sampleUsers.forEach((account) => {
+    db.run(
+      insertQuery,
+      [account.id, account.name, account.email, account.createdAt],
+      (err) => {
+        if (err) {
+          console.error("Error inserting sample data:", err);
+        }
+      }
+    );
   });
 }
 
@@ -80,6 +162,7 @@ function insertSampleData() {
       balance: 5000.0,
       accountHolder: "John Doe",
       createdAt: new Date().toISOString(),
+      userId: "1",
     },
     {
       id: "2",
@@ -88,12 +171,13 @@ function insertSampleData() {
       balance: 10000.0,
       accountHolder: "Jane Smith",
       createdAt: new Date().toISOString(),
+      userId: "2",
     },
   ];
 
   const insertQuery = `
-    INSERT OR REPLACE INTO accounts (id, accountNumber, accountType, balance, accountHolder, createdAt)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO accounts (id, accountNumber, accountType, balance, accountHolder, createdAt, userId)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `;
 
   sampleAccounts.forEach((account) => {
@@ -106,6 +190,7 @@ function insertSampleData() {
         account.balance,
         account.accountHolder,
         account.createdAt,
+        account.userId,
       ],
       (err) => {
         if (err) {
@@ -115,6 +200,19 @@ function insertSampleData() {
     );
   });
 }
+
+app.get("/api/users", (req, res) => {
+  db.all(
+    "SELECT users.*, accounts.id as accountId, accounts.balance as balance, accounts.accountNumber as accountNumber FROM users LEFT JOIN accounts ON users.id = accounts.userId",
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows);
+    }
+  );
+});
 
 // Basic API routes
 // Consider: Input validation, authentication, rate limiting, response formatting
@@ -142,8 +240,113 @@ app.get("/api/accounts/:id", (req, res) => {
   });
 });
 
+app.post("/api/transactions", async (req, res) => {
+  const id = Math.random().toString(36).substring(2, 15);
+  const { accountId, amount, description, type, accountNumber } = req.body;
+  const createdAt = new Date().toISOString();
+
+  if (type === "DEPOSIT") {
+    db.run(
+      "UPDATE accounts SET balance = balance + ? WHERE id = ?",
+      [amount, accountId],
+      (err) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+      }
+    );
+  }
+
+  if (type === "WITHDRAWAL") {
+    db.run(
+      "UPDATE accounts SET balance = balance - ? WHERE id = ?",
+      [amount, accountId],
+      (err) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+      }
+    );
+
+    ("----- send money to the account number -----");
+  }
+
+  if (type === "TRANSFER") {
+    const isBalanceEnough = await db.get(
+      "SELECT balance FROM accounts WHERE id = ?",
+      [accountId]
+    );
+    if (!isBalanceEnough || (isBalanceEnough as any).balance < amount) {
+      res.status(400).json({ error: "Insufficient balance" });
+      return;
+    }
+
+    // if (accountNumber === accountId) {
+    //   res.status(400).json({ error: "Cannot transfer money to the same account" });
+    //   return;
+    // }
+
+    db.run(
+      "UPDATE accounts SET balance = balance - ? WHERE id = ?",
+      [amount, accountId],
+      (err) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+      }
+    );
+
+    db.run(
+      "UPDATE accounts SET balance = balance + ? WHERE accountNumber = ?",
+      [amount, accountNumber],
+      (err) => {
+        if (err) {
+          res.status(500).json({ error: err.message });
+          return;
+        }
+      }
+    );
+  }
+
+  db.run(
+    "INSERT INTO transactions (id, type, amount, description, createdAt, accountId) VALUES (?, ?, ?, ?, ?, ?)",
+    [id, type, amount, description, createdAt, accountId],
+    (err) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json({ message: "Transaction created" });
+    }
+  );
+});
+
+app.get("/api/transactions/:accountId", (req, res) => {
+  db.all(
+    "SELECT * FROM transactions WHERE accountId = ?",
+    [req.params.accountId],
+    (err, rows) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      res.json(rows);
+    }
+  );
+});
 // Server startup
 // Consider: Graceful shutdown, environment configuration, clustering
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+// id TEXT PRIMARY KEY UNIQUE,
+//     type TEXT CHECK(type IN ('DEPOSIT', 'WITHDRAWAL')),
+//     amount REAL,
+//     description TEXT,
+//     createdAt TEXT,
+
+//     accountId TEXT,
