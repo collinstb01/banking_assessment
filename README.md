@@ -1,147 +1,192 @@
-# Banking Dashboard Technical Assessment
+# Banking Dashboard Application
 
-A deliberately basic banking dashboard application designed as a starting point for technical assessment. The project provides candidates with a foundation to demonstrate their skills in both frontend and backend development.
+A full-stack banking dashboard application with JWT authentication, built with React, TypeScript, Node.js, and SQLite.
 
-## Project Overview
+## Features
 
-This is an intentionally basic implementation with clear areas for improvement. Candidates are expected to identify issues, suggest improvements, and implement solutions.
+- User authentication (signup/login) with JWT
+- Secure password hashing with bcrypt
+- Personal account dashboard
+- Transaction management (deposits, withdrawals, transfers)
+- Transaction history with pagination
+- Persistent SQLite database
+- Responsive, modern UI
 
-### Current Implementation
+## Tech Stack
 
-- React + TypeScript frontend with basic account display
-- Node.js + Express backend with simple REST API
-- SQLite in-memory database
-- Basic styling and component structure
-- Type-safe implementation
+**Backend:**
 
-### Key Areas for Improvement
+- Node.js & Express
+- TypeScript
+- SQLite3
+- JWT (jsonwebtoken)
+- bcrypt for password hashing
 
-#### Frontend
-
-- [ ] Enhanced visual design and UX
-- [ ] Responsive layout improvements
-- [ ] Component structure optimization
-- [ ] Loading states and animations
-- [ ] Error handling and user feedback
-- [ ] Form validation
-- [ ] Authentication UI
-- [ ] Transaction history view
-- [ ] Filtering and sorting capabilities
-- [ ] Accessibility improvements
-- [ ] Unit and integration tests
-- [ ] Performance optimizations
-
-#### Backend
-
-- [ ] Persistent database implementation
-- [ ] Authentication and authorization
-- [ ] Input validation and sanitization
-- [ ] Error handling improvements
-- [ ] Rate limiting
-- [ ] Caching strategy
-- [ ] API documentation
-- [ ] Logging system
-- [ ] Unit and integration tests
-- [ ] Security improvements
-
-## Technical Stack
-
-### Frontend
+**Frontend:**
 
 - React 18
 - TypeScript
-- CSS Modules
 - Vite
-- Modern ES6+ features
-
-### Backend
-
-- Node.js
-- Express
-- TypeScript
-- SQLite (in-memory)
-- RESTful API design
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js (v14 or higher)
-- npm
-
-### Installation
-
-```bash
-# Install all dependencies (root, client, and server)
-npm run install-all
-```
-
-### Running the Application
-
-```bash
-# Start both frontend and backend servers
-npm run dev
-```
-
-The application will be available at:
-
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:3001
-
-## API Endpoints
-
-### Current Implementation
-
-- GET /api/accounts - Get all accounts
-- GET /api/accounts/:id - Get account by ID
-
-### Potential Additional Endpoints
-
-- POST /api/accounts - Create new account
-- PUT /api/accounts/:id - Update account
-- DELETE /api/accounts/:id - Delete account
-- GET /api/accounts/:id/transactions - Get account transactions
-- POST /api/auth/login - User authentication
-- GET /api/users/profile - Get user profile
+- CSS Modules
+- React Toastify for notifications
 
 ## Project Structure
 
 ```
 /
-├── client/                # React frontend
+├── server/                 # Backend API
 │   ├── src/
-│   │   ├── components/   # React components
-│   │   ├── types/       # TypeScript interfaces
-│   │   ├── api/         # API integration
-│   │   └── styles/      # CSS modules
-│   └── public/
-└── server/               # Node.js backend
-    └── src/
-        ├── routes/      # API routes
-        ├── services/    # Business logic
-        └── types/       # TypeScript interfaces
+│   │   ├── config/        # Configuration
+│   │   ├── controllers/   # Business logic
+│   │   ├── middleware/    # Auth middleware
+│   │   ├── models/        # Database setup
+│   │   ├── routes/        # API routes
+│   │   ├── types/         # TypeScript types
+│   │   └── index.ts       # Server entry point
+│   └── package.json
+│
+└── client/                # Frontend app
+    ├── src/
+    │   ├── components/    # React components
+    │   ├── services/      # API services
+    │   ├── utils/         # Utility functions
+    │   ├── types/         # TypeScript types
+    │   └── App.tsx
+    └── package.json
 ```
 
-## Assessment Goals
+## Installation & Setup
 
-This project serves as a foundation for candidates to demonstrate:
+### Prerequisites
 
-1. Code quality and organization
-2. Problem-solving approach
-3. Technical decision-making
-4. Understanding of full-stack development
-5. Attention to detail
-6. Knowledge of best practices
-7. Ability to identify and implement improvements
+- Node.js (v14 or higher)
+- npm or yarn
 
-## Notes for Candidates
+### 1. Install Dependencies
 
-- The current implementation is deliberately basic
-- Focus on both technical improvements and code quality
-- Consider real-world production requirements
-- Document your changes and reasoning
-- Think about scalability and maintainability
-- Consider security implications
-- Implement proper error handling
-- Add appropriate tests
-- Follow best practices for your chosen technologies
+```bash
+# Install root dependencies (optional)
+npm install
+
+# Install backend dependencies
+cd server
+npm install
+
+# Install frontend dependencies
+cd ../client
+npm install
+```
+
+### 2. Start the Backend Server
+
+```bash
+cd server
+npm run dev
+```
+
+The server will start on `http://localhost:3001`
+
+### 3. Start the Frontend
+
+Open a new terminal window:
+
+```bash
+cd client
+npm run dev
+```
+
+The client will start on `http://localhost:5173`
+
+## Usage
+
+1. Open your browser and navigate to `http://localhost:5173`
+2. Create an account using the signup form
+3. Login with your credentials
+4. View your account dashboard
+5. Perform transactions (deposit, withdrawal, transfer)
+6. View transaction history
+
+## API Endpoints
+
+### Authentication
+
+- `POST /api/auth/signup` - Create new user account
+- `POST /api/auth/login` - Login user
+
+### User (Protected)
+
+- `GET /api/user/account` - Get user account details
+- `POST /api/user/transactions` - Create new transaction
+- `GET /api/user/transactions?page=1&limit=10` - Get transaction history
+
+## Database
+
+The application uses SQLite with a persistent database file (`banking.db`) that is created automatically on first run. The database includes:
+
+- `users` table - User accounts with hashed passwords
+- `accounts` table - Bank account information
+- `transactions` table - Transaction records
+
+## Security Features
+
+- JWT-based authentication
+- Password hashing with bcrypt (10 rounds)
+- Protected API routes
+- Token expiration (24 hours)
+- Input validation and sanitization
+- SQL injection prevention with parameterized queries
+
+## Development
+
+### Available Scripts
+
+**Backend:**
+
+- `npm run dev` - Start development server with hot reload
+- `npm run build` - Build TypeScript to JavaScript
+- `npm start` - Start production server
+
+**Frontend:**
+
+- `npm run dev` - Start Vite development server
+- `npm run build` - Build for production
+- `npm run preview` - Preview production build
+
+## Notes
+
+- The database file (`banking.db`) is gitignored and will be created on first run
+- JWT secret should be changed in production via environment variables
+- Default port for backend is 3001, frontend is 5173
+- All passwords are securely hashed before storage
+
+## Environment Variables (Optional)
+
+Create a `.env` file in the server directory:
+
+```env
+PORT=3001
+JWT_SECRET=your-secret-key-here
+NODE_ENV=development
+```
+
+## Troubleshooting
+
+**Port already in use:**
+
+```bash
+# Kill process on port 3001
+lsof -ti:3001 | xargs kill -9
+```
+
+**Database errors:**
+
+- Delete `banking.db` file and restart server to recreate with fresh schema
+
+**Dependencies issues:**
+
+- Delete `node_modules` and `package-lock.json`
+- Run `npm install` again
+
+---
+
+Built as a technical assessment project demonstrating full-stack development skills.

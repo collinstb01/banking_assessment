@@ -13,6 +13,7 @@ export interface User {
   email: string;
   accountId: string;
   accountNumber: string;
+  accountType?: "CHECKING" | "SAVINGS";
   balance: number;
   createdAt: string;
 }

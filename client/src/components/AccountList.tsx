@@ -1,66 +1,117 @@
 /**
- * AccountList Component
+ * AccountList Component - Enhanced Version
  *
- * TECHNICAL ASSESSMENT NOTES:
- * This is a basic implementation with intentional areas for improvement:
- * - Basic error handling
- * - Simple loading state
- * - No skeleton loading
- * - No retry mechanism
- * - No pagination
- * - No sorting/filtering
- * - No animations
- * - No accessibility features
- * - No tests
- *
- * Candidates should consider:
- * - Component structure
- * - Error boundary implementation
- * - Loading states and animations
- * - User feedback
- * - Performance optimization
- * - Accessibility (ARIA labels, keyboard navigation)
- * - Testing strategy
+ * Improvements Made:
+ * - Modern, polished UI with proper styling
+ * - Enhanced error handling and loading states
+ * - Proper currency and date formatting
+ * - Modal-based transaction form
+ * - Visual indicators for transaction types (debit/credit)
+ * - Removed console.logs
+ * - Better user feedback with proper error messages
+ * - Accessibility improvements
+ * - Responsive design
  */
 
-import { useState, useEffect } from "react";
-import { Transaction, User } from "../types";
+import { useState, useEffect, useCallback } from "react";
+import type { Transaction, User } from "../types";
 import { getTransactions, getUsers, createTransaction } from "../api";
 import styles from "./AccountList.module.css";
 import { toast } from "react-toastify";
 
+// Utility functions for formatting
+const formatCurrency = (amount: number): string => {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(amount);
+};
+
+const formatDate = (dateString: string): string => {
+  const date = new Date(dateString);
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+};
+
+const getRelativeTime = (dateString: string): string => {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return formatDate(dateString);
+};
+
 export function AccountList() {
-  // Basic state management - Consider using more robust state management for larger applications
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
-  // Data fetching - Consider implementing retry logic, caching, and better error handling
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       const usersData = await getUsers();
       setUsers(usersData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to load accounts";
+      setError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [fetchUsers]);
 
-  // Basic loading and error states - Consider implementing skeleton loading and error boundaries
-  if (loading) return <div>Loading...</div>;
-  if (error) return <div>Error: {error}</div>;
+  if (loading) {
+    return (
+      <div className={styles.loadingState}>
+        <div className={styles.spinner} />
+      </div>
+    );
+  }
 
-  // Basic render logic - Consider implementing:
-  // - Sorting and filtering
-  // - Pagination
-  // - Search functionality
-  // - More interactive features
-  // - Accessibility improvements
+  if (error) {
+    return (
+      <div className={styles.errorState}>
+        <h3>⚠️ Error Loading Accounts</h3>
+        <p>{error}</p>
+        <button
+          type="button"
+          className={styles.btnPrimary}
+          onClick={fetchUsers}
+          style={{ marginTop: "1rem" }}
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  if (users.length === 0) {
+    return (
+      <div className={styles.errorState}>
+        <h3>No Accounts Found</h3>
+        <p>There are no accounts to display.</p>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.container}>
       <div className={styles.grid}>
@@ -72,51 +123,58 @@ export function AccountList() {
   );
 }
 
-const UserCard = ({
-  user,
-  fetchUsers,
-}: {
+interface UserCardProps {
   user: User;
   fetchUsers: () => void;
-}) => {
+}
+
+const UserCard = ({ user, fetchUsers }: UserCardProps) => {
   const [showTransactions, setShowTransactions] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [hasPreviousPage, setHasPreviousPage] = useState(false);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
   const [showCreateTransaction, setShowCreateTransaction] = useState(false);
+  const [submittingTransaction, setSubmittingTransaction] = useState(false);
+
   const [createTransactionData, setCreateTransactionData] = useState({
-    amount: 0,
+    amount: "",
     description: "",
-    type: "" as "DEPOSIT" | "WITHDRAWAL" | "TRANSFER",
+    type: "" as "" | "DEPOSIT" | "WITHDRAWAL" | "TRANSFER",
     accountNumber: "",
   });
 
-  const _getTransactions = async (accountId: string, page: number = 1) => {
-    setShowTransactions(true);
-
-    const response = await getTransactions(accountId, page, 10);
-    setTransactions(response.data);
-    setCurrentPage(response.pagination.currentPage);
-    setTotalPages(response.pagination.totalPages);
-    setHasNextPage(response.pagination.hasNextPage);
-    setHasPreviousPage(response.pagination.hasPreviousPage);
+  const loadTransactions = async (accountId: string, page: number = 1) => {
+    setLoadingTransactions(true);
+    try {
+      const response = await getTransactions(accountId, page, 10);
+      setTransactions(response.data);
+      setCurrentPage(response.pagination.currentPage);
+      setTotalPages(response.pagination.totalPages);
+      setHasNextPage(response.pagination.hasNextPage);
+      setHasPreviousPage(response.pagination.hasPreviousPage);
+      setShowTransactions(true);
+    } finally {
+      setLoadingTransactions(false);
+    }
   };
 
-  const _createTransaction = async (accountId: string) => {
+  const handleCreateTransaction = async (accountId: string) => {
     // Validation
     if (!createTransactionData.type) {
       toast.error("Please select a transaction type");
       return;
     }
 
-    if (createTransactionData.amount <= 0) {
-      toast.error("Amount must be greater than zero");
+    const amount = Number.parseFloat(createTransactionData.amount);
+    if (!amount || amount <= 0) {
+      toast.error("Please enter a valid amount greater than zero");
       return;
     }
 
-    if (!createTransactionData.description) {
+    if (!createTransactionData.description.trim()) {
       toast.error("Please enter a description");
       return;
     }
@@ -125,160 +183,356 @@ const UserCard = ({
     if (
       (createTransactionData.type === "WITHDRAWAL" ||
         createTransactionData.type === "TRANSFER") &&
-      !createTransactionData.accountNumber
+      !createTransactionData.accountNumber.trim()
     ) {
       toast.error(
-        "Account number is required for " +
-          createTransactionData.type.toLowerCase()
+        `Account number is required for ${createTransactionData.type.toLowerCase()}`
       );
       return;
     }
 
+    setSubmittingTransaction(true);
     try {
       await createTransaction(
         accountId,
-        createTransactionData.amount,
-        createTransactionData.description,
+        amount,
+        createTransactionData.description.trim(),
         createTransactionData.type,
-        createTransactionData.accountNumber || "null"
+        createTransactionData.accountNumber.trim() || "null"
       );
+
+      // Reset form
       setShowCreateTransaction(false);
       setCreateTransactionData({
-        amount: 0,
+        amount: "",
         description: "",
-        type: "" as "DEPOSIT" | "WITHDRAWAL" | "TRANSFER",
+        type: "",
         accountNumber: "",
       });
-      _getTransactions(accountId);
-      fetchUsers();
-    } catch (error) {
-      // Error toast already handled in api.ts
-      console.error("Transaction failed:", error);
+
+      // Reload data
+      await loadTransactions(accountId, currentPage);
+      await fetchUsers();
+
+      toast.success("Transaction completed successfully!");
+    } finally {
+      setSubmittingTransaction(false);
     }
   };
 
-  console.log(transactions, "skksksk");
-  return (
-    <div className={styles.card}>
-      <h3>{user.name}</h3>
-      <p>Account Number: {user.accountNumber}</p>
-      <p>Balance: {user.balance}</p>
-      <p>Email: {user.email}</p>
-      <p>Created At: {user.createdAt}</p>
-      <div>
-        <button onClick={() => setShowCreateTransaction(true)}>
-          Create Transaction
-        </button>
-        <button onClick={() => _getTransactions(user.accountId)}>
-          View Transactions
-        </button>
-      </div>
+  const accountTypeClass =
+    user.accountType?.toLowerCase() === "savings" ? "savings" : "checking";
 
-      {showCreateTransaction && (
-        <div className="createTransactionContainer">
-          <input
-            type="text"
-            placeholder="Amount"
-            className="input"
-            onChange={(e) =>
-              setCreateTransactionData({
-                ...createTransactionData,
-                amount: Number(e.target.value),
-              })
-            }
-            value={createTransactionData.amount}
-          />
-          <input
-            type="text"
-            placeholder="Description"
-            className="input"
-            onChange={(e) =>
-              setCreateTransactionData({
-                ...createTransactionData,
-                description: e.target.value,
-              })
-            }
-            value={createTransactionData.description}
-          />
-          {createTransactionData.type !== "DEPOSIT" && (
-            <input
-              type="text"
-              placeholder="Account Number"
-              className="input"
-              onChange={(e) =>
-                setCreateTransactionData({
-                  ...createTransactionData,
-                  accountNumber: e.target.value,
-                })
-              }
-              value={createTransactionData.accountNumber}
-            />
-          )}
-          <select
-            name="type"
-            id="type"
-            className="input"
-            onChange={(e) =>
-              setCreateTransactionData({
-                ...createTransactionData,
-                type: e.target.value as "DEPOSIT" | "WITHDRAWAL" | "TRANSFER",
-              })
-            }
-            value={createTransactionData.type}
+  return (
+    <>
+      <div className={styles.card}>
+        <div className={styles.cardHeader}>
+          <div className={styles.accountInfo}>
+            <h3>{user.name}</h3>
+            <p className={styles.accountNumber}>Acc #: {user.accountNumber}</p>
+            <span
+              className={`${styles.accountType} ${styles[accountTypeClass]}`}
+            >
+              {user.accountType || "Checking"}
+            </span>
+          </div>
+          <div className={styles.balance}>
+            <p className={styles.balanceLabel}>Balance</p>
+            <p className={styles.balanceAmount}>
+              {formatCurrency(user.balance || 0)}
+            </p>
+          </div>
+        </div>
+
+        <div className={styles.cardDetails}>
+          <div className={styles.detailRow}>
+            <span className={styles.detailLabel}>Email</span>
+            <span className={styles.detailValue}>{user.email}</span>
+          </div>
+          <div className={styles.detailRow}>
+            <span className={styles.detailLabel}>Created</span>
+            <span className={styles.detailValue}>
+              {formatDate(user.createdAt)}
+            </span>
+          </div>
+        </div>
+
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={`${styles.btn} ${styles.btnPrimary}`}
+            onClick={() => setShowCreateTransaction(true)}
           >
-            <option value="">Select a type</option>
-            <option value="DEPOSIT">Deposit</option>
-            <option value="TRANSFER">Transfer</option>
-            <option value="WITHDRAWAL">Withdrawal</option>
-          </select>
-          <button onClick={() => _createTransaction(user.accountId)}>
-            Create Transaction
+            💳 New Transaction
+          </button>
+          <button
+            type="button"
+            className={`${styles.btn} ${styles.btnSecondary}`}
+            onClick={() => loadTransactions(user.accountId)}
+            disabled={loadingTransactions}
+          >
+            {loadingTransactions ? "Loading..." : "📊 View History"}
           </button>
         </div>
-      )}
 
-      {showTransactions && (
-        <div className={styles.transactions}>
-          <h4>Transactions</h4>
-          {transactions.length > 0 ? (
-            <div className={styles.transactionsContainer}>
-              {transactions.map((transaction, index) => (
-                <div key={transaction.id} className={"transactionItem"}>
-                  <p>{(currentPage - 1) * 10 + index + 1}.</p>
-                  <p>amount: {transaction.amount}</p>
-                  <p>description: {transaction.description}</p>
-                  <p>createdAt: {transaction.createdAt}</p>
+        {showTransactions && (
+          <div className={styles.transactions}>
+            <div className={styles.transactionsHeader}>
+              <h4>Transaction History</h4>
+              <button
+                type="button"
+                className={`${styles.btn} ${styles.btnSecondary}`}
+                style={{
+                  flex: "none",
+                  fontSize: "0.75rem",
+                  padding: "0.5rem 0.75rem",
+                }}
+                onClick={() => setShowTransactions(false)}
+              >
+                Hide
+              </button>
+            </div>
+
+            {loadingTransactions ? (
+              <div style={{ textAlign: "center", padding: "2rem" }}>
+                <div className={styles.spinner} />
+              </div>
+            ) : transactions.length > 0 ? (
+              <div className={styles.transactionsContainer}>
+                {transactions.map((transaction) => {
+                  const transactionType = transaction.type.toLowerCase();
+                  return (
+                    <div
+                      key={transaction.id}
+                      className={`${styles.transactionItem} ${styles[transactionType]}`}
+                    >
+                      <div className={styles.transactionDetails}>
+                        <div
+                          className={`${styles.transactionType} ${styles[transactionType]}`}
+                        >
+                          {transaction.type === "DEPOSIT" && "💰 Credit"}
+                          {transaction.type === "WITHDRAWAL" && "💸 Debit"}
+                          {transaction.type === "TRANSFER" && "🔄 Transfer"}
+                        </div>
+                        <p className={styles.transactionDescription}>
+                          {transaction.description}
+                        </p>
+                        <p className={styles.transactionDate}>
+                          {getRelativeTime(transaction.createdAt)}
+                        </p>
+                      </div>
+                      <div
+                        className={`${styles.transactionAmount} ${styles[transactionType]}`}
+                      >
+                        {transaction.type === "DEPOSIT" && "+"}
+                        {(transaction.type === "WITHDRAWAL" ||
+                          transaction.type === "TRANSFER") &&
+                          "-"}
+                        {formatCurrency(transaction.amount)}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {totalPages > 1 && (
+                  <div className={styles.pagination}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        loadTransactions(user.accountId, currentPage - 1)
+                      }
+                      disabled={!hasPreviousPage || loadingTransactions}
+                    >
+                      ← Previous
+                    </button>
+                    <span>
+                      Page {currentPage} of {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        loadTransactions(user.accountId, currentPage + 1)
+                      }
+                      disabled={!hasNextPage || loadingTransactions}
+                    >
+                      Next →
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className={styles.noTransactions}>
+                <p>No transactions yet</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Transaction Modal */}
+      {showCreateTransaction && (
+        <div
+          className={styles.modal}
+          onClick={() =>
+            !submittingTransaction && setShowCreateTransaction(false)
+          }
+          onKeyDown={(e) => {
+            if (e.key === "Escape" && !submittingTransaction) {
+              setShowCreateTransaction(false);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+        >
+          <div
+            className={styles.modalContent}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className={styles.modalHeader}>
+              <h3>New Transaction</h3>
+              <button
+                type="button"
+                className={styles.closeButton}
+                onClick={() => setShowCreateTransaction(false)}
+                disabled={submittingTransaction}
+                aria-label="Close modal"
+              >
+                ×
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreateTransaction(user.accountId);
+              }}
+            >
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel} htmlFor="type">
+                  Transaction Type *
+                </label>
+                <select
+                  id="type"
+                  className={styles.formSelect}
+                  value={createTransactionData.type}
+                  onChange={(e) =>
+                    setCreateTransactionData({
+                      ...createTransactionData,
+                      type: e.target.value as
+                        | "DEPOSIT"
+                        | "WITHDRAWAL"
+                        | "TRANSFER"
+                        | "",
+                    })
+                  }
+                  disabled={submittingTransaction}
+                  required
+                >
+                  <option value="">Select a type</option>
+                  <option value="DEPOSIT">💰 Deposit (Credit)</option>
+                  <option value="WITHDRAWAL">💸 Withdrawal (Debit)</option>
+                  <option value="TRANSFER">
+                    🔄 Transfer to Another Account
+                  </option>
+                </select>
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel} htmlFor="amount">
+                  Amount *
+                </label>
+                <input
+                  id="amount"
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  placeholder="0.00"
+                  className={styles.formInput}
+                  value={createTransactionData.amount}
+                  onChange={(e) =>
+                    setCreateTransactionData({
+                      ...createTransactionData,
+                      amount: e.target.value,
+                    })
+                  }
+                  disabled={submittingTransaction}
+                  required
+                />
+              </div>
+
+              <div className={styles.formGroup}>
+                <label className={styles.formLabel} htmlFor="description">
+                  Description *
+                </label>
+                <input
+                  id="description"
+                  type="text"
+                  placeholder="Enter transaction description"
+                  className={styles.formInput}
+                  value={createTransactionData.description}
+                  onChange={(e) =>
+                    setCreateTransactionData({
+                      ...createTransactionData,
+                      description: e.target.value,
+                    })
+                  }
+                  disabled={submittingTransaction}
+                  required
+                />
+              </div>
+
+              {(createTransactionData.type === "WITHDRAWAL" ||
+                createTransactionData.type === "TRANSFER") && (
+                <div className={styles.formGroup}>
+                  <label className={styles.formLabel} htmlFor="accountNumber">
+                    {createTransactionData.type === "TRANSFER"
+                      ? "Target Account Number *"
+                      : "Account Number *"}
+                  </label>
+                  <input
+                    id="accountNumber"
+                    type="text"
+                    placeholder="Enter account number"
+                    className={styles.formInput}
+                    value={createTransactionData.accountNumber}
+                    onChange={(e) =>
+                      setCreateTransactionData({
+                        ...createTransactionData,
+                        accountNumber: e.target.value,
+                      })
+                    }
+                    disabled={submittingTransaction}
+                    required
+                  />
                 </div>
-              ))}
-              <div className="pagination">
+              )}
+
+              <div className={styles.formActions}>
                 <button
-                  onClick={() =>
-                    _getTransactions(user.accountId, currentPage - 1)
-                  }
-                  disabled={!hasPreviousPage}
+                  type="button"
+                  className={`${styles.btn} ${styles.btnSecondary}`}
+                  onClick={() => setShowCreateTransaction(false)}
+                  disabled={submittingTransaction}
                 >
-                  Previous
+                  Cancel
                 </button>
-                <span>
-                  Page {currentPage} of {totalPages}
-                </span>
                 <button
-                  onClick={() =>
-                    _getTransactions(user.accountId, currentPage + 1)
-                  }
-                  disabled={!hasNextPage}
+                  type="submit"
+                  className={`${styles.btn} ${styles.btnPrimary}`}
+                  disabled={submittingTransaction}
                 >
-                  Next
+                  {submittingTransaction
+                    ? "Processing..."
+                    : "Submit Transaction"}
                 </button>
               </div>
-            </div>
-          ) : (
-            <div className={styles.transactionsList}>
-              <p>No transactions found</p>
-            </div>
-          )}
+            </form>
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 };

@@ -1,36 +1,155 @@
 import { toast } from "react-toastify";
-import { Account, Transaction, User } from "./types";
 
 const API_URL = "http://localhost:3001/api";
 
-export const getAccounts = async (): Promise<Account[]> => {
-  const response = await fetch(`${API_URL}/accounts`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch accounts");
-  }
-  return response.json();
+// Get token from localStorage
+const getToken = (): string | null => {
+  return localStorage.getItem("token");
 };
 
-export const getAccount = async (id: string): Promise<Account> => {
-  const response = await fetch(`${API_URL}/accounts/${id}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch account");
-  }
-  return response.json();
+// Set token in localStorage
+export const setToken = (token: string): void => {
+  localStorage.setItem("token", token);
 };
 
-export const getUsers = async (): Promise<User[]> => {
+// Remove token from localStorage
+export const removeToken = (): void => {
+  localStorage.removeItem("token");
+};
+
+// Auth headers
+const getAuthHeaders = () => {
+  const token = getToken();
+  return {
+    "Content-Type": "application/json",
+    ...(token && { Authorization: `Bearer ${token}` }),
+  };
+};
+
+export interface SignupData {
+  name: string;
+  email: string;
+  password: string;
+  accountType?: "CHECKING" | "SAVINGS";
+}
+
+export interface LoginData {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  message: string;
+  token: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    accountId?: string;
+    accountNumber: string;
+    accountType: string;
+    balance: number;
+  };
+}
+
+export const signup = async (data: SignupData): Promise<AuthResponse> => {
   try {
-    const response = await fetch(`${API_URL}/users`);
+    const response = await fetch(`${API_URL}/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
     if (!response.ok) {
-      throw new Error("Failed to fetch users");
+      throw new Error(result.error || "Signup failed");
     }
-    return response.json();
-  } catch {
-    toast.error("Failed to fetch users");
-    throw new Error("Failed to fetch users");
+
+    // Save token
+    localStorage.setItem("token", result.token);
+    return result;
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Signup failed";
+    toast.error(errorMessage);
+    throw error;
   }
 };
+
+export const login = async (data: LoginData): Promise<AuthResponse> => {
+  try {
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error || "Login failed");
+    }
+
+    // Save token
+    localStorage.setItem("token", result.token);
+    return result;
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Login failed";
+    toast.error(errorMessage);
+    throw error;
+  }
+};
+
+export const logout = (): void => {
+  removeToken();
+  toast.success("Logged out successfully");
+};
+
+// Protected API calls
+export interface Account {
+  id: string;
+  accountNumber: string;
+  accountType: string;
+  balance: number;
+  accountHolder: string;
+  name: string;
+  email: string;
+  createdAt: string;
+}
+
+export const getUserAccount = async (): Promise<Account> => {
+  try {
+    const response = await fetch(`${API_URL}/user/account`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      removeToken();
+      throw new Error("Session expired. Please login again.");
+    }
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch account");
+    }
+
+    return response.json();
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to load account";
+    toast.error(errorMessage);
+    throw error;
+  }
+};
+
+export interface Transaction {
+  id: string;
+  type: "DEPOSIT" | "WITHDRAWAL" | "TRANSFER";
+  amount: number;
+  description: string;
+  createdAt: string;
+}
 
 export interface PaginatedTransactions {
   data: Transaction[];
@@ -45,57 +164,71 @@ export interface PaginatedTransactions {
 }
 
 export const getTransactions = async (
-  accountId: string,
   page: number = 1,
   limit: number = 10
 ): Promise<PaginatedTransactions> => {
   try {
     const response = await fetch(
-      `${API_URL}/accounts/${accountId}/transactions?page=${page}&limit=${limit}`
+      `${API_URL}/transactions?page=${page}&limit=${limit}`,
+      {
+        headers: getAuthHeaders(),
+      }
     );
+
+    if (response.status === 401 || response.status === 403) {
+      removeToken();
+      throw new Error("Session expired. Please login again.");
+    }
+
     if (!response.ok) {
       throw new Error("Failed to fetch transactions");
     }
+
     return response.json();
-  } catch {
-    toast.error("Failed to fetch transactions");
-    throw new Error("Failed to fetch transactions");
+  } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to fetch transactions";
+    toast.error(errorMessage);
+    throw error;
   }
 };
 
 export const createTransaction = async (
-  accountId: string,
   amount: number,
   description: string,
   type: "DEPOSIT" | "WITHDRAWAL" | "TRANSFER",
-  accountNumber: string
-): Promise<Transaction> => {
+  accountNumber?: string
+): Promise<any> => {
   try {
     const response = await fetch(`${API_URL}/transactions`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: getAuthHeaders(),
       body: JSON.stringify({
         amount,
         description,
         type,
-        accountId,
         accountNumber,
       }),
     });
+
+    if (response.status === 401 || response.status === 403) {
+      removeToken();
+      throw new Error("Session expired. Please login again.");
+    }
+
+    const result = await response.json();
+
     if (!response.ok) {
-      const errorData = await response.json();
-      const errorMessage = errorData.error || "Failed to create transaction";
+      const errorMessage = result.error || "Failed to create transaction";
       toast.error(errorMessage);
       throw new Error(errorMessage);
     }
-    toast.success("Transaction created successfully");
-    return response.json();
+
+    toast.success("Transaction completed successfully");
+    return result;
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Failed to create transaction";
-    toast.error(errorMessage);
-    throw error;
+    throw new Error(errorMessage);
   }
 };
